@@ -1,0 +1,152 @@
+###########################################################################
+##                                                                       ##
+##                       CentOS 6.2 Mirror Script                        ##
+##                                                                       ##
+## Creation:    26.11.2004                                               ##
+## Last Update: 21.12.2011                                               ##
+##                                                                       ##
+## Copyright (c) 2004-2011 by Georg Kainzbauer <georgkainzbauer@gmx.net> ##
+##                                                                       ##
+## This program is free software; you can redistribute it and/or modify  ##
+## it under the terms of the GNU General Public License as published by  ##
+## the Free Software Foundation; either version 2 of the License, or     ##
+## (at your option) any later version.                                   ##
+##                                                                       ##
+###########################################################################
+#!/bin/sh
+
+# CentOS 6 mirror server and local mirror directory
+CENTOS6_SERVER=eu-msync.centos.org::CentOS/6/
+CENTOS6_MIRROR=/var/ftp/pub/linux/centos/6/
+
+# CentOS 6.x mirror server and local mirror directory
+CENTOS6X_SERVER=eu-msync.centos.org::CentOS/6.2/
+CENTOS6X_MIRROR=/var/ftp/pub/linux/centos/6.2/
+
+# Log file
+LOGFILE=/var/log/centos6_mirror.log
+
+# Debug file (if you do not want to debug the download process set this option to "/dev/null")
+DEBUGFILE=/var/log/centos6_mirror.debug
+
+# Who will be informed in case if anything goes wrong (if you do not want to be informed via mail, set this option to "")
+MAILNOTIFY="root@localhost"
+
+# Lock file
+LOCK=/var/tmp/centos6_mirror.lock
+
+##################################################################
+# NORMALY THERE IS NO NEED TO CHANGE ANYTHING BELOW THIS COMMENT #
+##################################################################
+
+function log()
+  {
+    echo `date +%d.%m.%Y%t%H:%M:%S` "    LOG:" $1 >>${LOGFILE}
+  }
+
+function error()
+  {
+    echo `date +%d.%m.%Y%t%H:%M:%S` "    ERROR:" $1 >>${LOGFILE}
+    if [ -n "$MAILNOTIFY" ] ; then
+      echo `date +%d.%m.%Y%t%H:%M:%S` "    ERROR:" $1 | mail -s "ERROR while synchronizing CentOS 6" $MAILNOTIFY
+    fi
+    echo $1 | grep "Lockfile" >/dev/null
+    if [ $? = 1 ] ; then
+      rm -f ${LOCK}
+    fi
+    exit 1
+  }
+
+function status()
+  {
+    case "$1" in
+      0)
+        log "Synchronization completed."
+        ;;
+      1)
+        error "RSYNC: Syntax or usage error"
+        ;;
+      2)
+        error "RSYNC: Protocol incompatibility"
+        ;;
+      3)
+        error "RSYNC: Errors selecting input/output files, dirs"
+        ;;
+      4)
+        error "RSYNC: Requested action not supported: an attempt was made to manipulate 64-bit files on a platform that cannot support them; or an option was specified that is supported by the client and not by the server."
+        ;;
+      5)
+        error "RSYNC: Error starting client-server protocol"
+        ;;
+      6)
+        error "RSYNC: Daemon unable to append to log-file"
+        ;;
+      10)
+        error "RSYNC: Error in socket I/O"
+        ;;
+      11)
+        error "RSYNC: Error in file I/O"
+        ;;
+      12)
+        error "RSYNC: Error in rsync protocol data stream"
+        ;;
+      13)
+        error "RSYNC: Errors with program diagnostics"
+        ;;
+      14)
+        error "RSYNC: Error in IPC code"
+        ;;
+      20)
+        error "RSYNC: Received SIGUSR1 or SIGINT"
+        ;;
+      21)
+        error "RSYNC: Some error returned by waitpid()"
+        ;;
+      22)
+        error "RSYNC: Error allocating core memory buffers"
+        ;;
+      23)
+        error "RSYNC: Partial transfer due to error"
+        ;;
+      24)
+        error "RSYNC: Partial transfer due to vanished source files"
+        ;;
+      25)
+        error "RSYNC: The --max-delete limit stopped deletions"
+        ;;
+      30)
+        error "RSYNC: Timeout in data send/receive"
+        ;;
+      *)
+        error "RSYNC: Unknown error $1"
+        ;;
+    esac
+  }
+
+if [ -f ${LOCK} ] ; then
+  error "Lockfile ${LOCK} exists."
+fi
+
+touch ${LOCK}
+
+# Create local mirror directories if not exists
+if [ ! -d ${CENTOS6_MIRROR} ] ; then
+  log "Creating local CentOS 6 mirror directory."
+  mkdir -p ${CENTOS6_MIRROR}
+fi
+if [ ! -d ${CENTOS6X_MIRROR} ] ; then
+  log "Creating local CentOS 6.2 mirror directory."
+  mkdir -p ${CENTOS6X_MIRROR}
+fi
+
+log "Starting CentOS 6 download process."
+rsync -avzH --delete --progress --delay-updates --timeout=300 --exclude "isos" ${CENTOS6_SERVER} ${CENTOS6_MIRROR} >>${DEBUGFILE} 2>&1
+status $?
+
+log "Starting CentOS 6.2 download process."
+rsync -avzH --delete --progress --delay-updates --timeout=300 --exclude "isos" --exclude "*/SRPMS" ${CENTOS6X_SERVER} ${CENTOS6X_MIRROR} >>${DEBUGFILE} 2>&1
+status $?
+
+rm -f ${LOCK}
+
+exit 0
